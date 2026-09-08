@@ -1,0 +1,5 @@
+{
+  "backends": ["cuda", "nvidia"],
+  "architectures": [],
+  "documents": ["async-tma-output-publication.md"]
+}

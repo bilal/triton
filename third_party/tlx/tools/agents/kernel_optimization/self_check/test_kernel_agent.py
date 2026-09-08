@@ -141,6 +141,10 @@ class ScoringTest(unittest.TestCase):
             ),
         )
         self.assertIn("Evidence-driven optimization workflow", prompt)
+        self.assertIn("Begin with measured evidence and feedback", prompt)
+        self.assertIn("Try low-effort scopes first", prompt)
+        self.assertIn("Modify PTX or AMDGCN experimentally", prompt)
+        self.assertIn("Escalate broader compiler changes to a human", prompt)
         self.assertIn("Keep measurement scopes separate", prompt)
         self.assertIn("exactly one testable hypothesis", prompt)
         self.assertIn(".claude/skills/tlx-api-reference/SKILL.md", prompt)
@@ -161,7 +165,7 @@ class ScoringTest(unittest.TestCase):
         self.assertIn("Performance:", prompt)
         self.assertIn("external harness adds", prompt)
         self.assertIn("expected_effect", prompt)
-        self.assertIn("Trusted built-in target optimization skills", prompt)
+        self.assertIn("Trusted built-in target optimization knowledge", prompt)
         self.assertIn("# TLX Layout Conversion Efficiency", prompt)
         self.assertIn("# NVIDIA Async TMA Output Publication", prompt)
         self.assertIn("# Blackwell Persistent CLC Scheduling", prompt)
@@ -173,7 +177,7 @@ class ScoringTest(unittest.TestCase):
             prompt.index("# NVIDIA Async TMA Output Publication"),
         )
         self.assertLess(
-            prompt.index("Trusted built-in target optimization skills"),
+            prompt.index("Trusted built-in target optimization knowledge"),
             prompt.index("Frozen target-specific optimization guidance"),
         )
 
@@ -229,7 +233,7 @@ class ScoringTest(unittest.TestCase):
             ),
         )
         self.assertIn(guidance, prompt)
-        self.assertIn("Trusted built-in target optimization skills", prompt)
+        self.assertIn("Trusted built-in target optimization knowledge", prompt)
         self.assertIn("# TLX Layout Conversion Efficiency", prompt)
         self.assertNotIn("# NVIDIA Async TMA Output Publication", prompt)
         self.assertNotIn("# Blackwell Persistent CLC Scheduling", prompt)
@@ -570,9 +574,9 @@ class HarnessTest(unittest.TestCase):
             harness,
             Path(__file__).parents[1]
             / "decision_maker"
-            / "harnesses"
-            / "hopper"
             / "targets"
+            / "nvidia"
+            / "hopper"
             / "gemm"
             / "harness.py",
         )
@@ -588,9 +592,8 @@ class HarnessTest(unittest.TestCase):
             harness,
             Path(__file__).parents[1]
             / "decision_maker"
-            / "harnesses"
-            / "host"
             / "targets"
+            / "host"
             / "vector_add"
             / "harness.py",
         )
