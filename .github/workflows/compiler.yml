@@ -1,4 +1,4 @@
-name: Compiler LIT Tests
+name: TLX Compilation Tests
 
 on:
   push:
@@ -21,11 +21,12 @@ permissions: read-all
 
 jobs:
   lit-tests:
-    name: LIT Tests
+    name: TLX Compilation
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
       failures: ${{ steps.parse.outputs.failures }}
+      codegen_failures: ${{ steps.parse_codegen.outputs.failures }}
 
     steps:
       - name: Checkout
@@ -100,6 +101,40 @@ jobs:
             --bucket "compiler-lit" \
             ${FAILED_FLAG}
 
+      - name: Install Triton into the LIT build tree
+        env:
+          TRITON_BUILD_DIR: ${{ github.workspace }}/build
+          LLVM_SYSPATH: ${{ github.workspace }}/llvm-install
+        run: |
+          # CPU torch: the codegen tests need no device, but python/test/conftest.py
+          # imports torch unconditionally. Installed before the editable Triton so a
+          # torch-pulled triton cannot shadow it.
+          python3 -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python3 -m pip install pytest "setuptools>=40.8.0" "nanobind==2.10.2"
+          pip install -e . --no-build-isolation
+
+      - name: Run device-free TLX codegen tests
+        id: codegen
+        timeout-minutes: 30
+        run: |
+          python -m pytest python/test/unit/language/test_tlx_codegen.py \
+            -v --junitxml=/tmp/tlx-codegen.xml
+
+      - name: Collect nightly failures (TLX codegen)
+        id: parse_codegen
+        if: always() && github.event_name == 'schedule'
+        run: |
+          FAILED_FLAG=""
+          if [[ "${{ steps.codegen.outcome }}" != "success" ]]; then
+            FAILED_FLAG="--failed --bucket tlx-codegen-job-failed"
+          fi
+          python3 .github/scripts/parse_junit_failures.py \
+            --junit /tmp/tlx-codegen.xml \
+            --budget /tmp/tlx-codegen.xml=30 \
+            --workflow "${GITHUB_WORKFLOW}" \
+            --job "tlx-codegen" \
+            ${FAILED_FLAG}
+
   # ----- Nightly issue filing (schedule only) -----
   report-compiler-lit:
     needs: lit-tests
@@ -132,6 +167,36 @@ jobs:
       # annotation, but not per-commit deep bisection (LLVM+Triton rebuild is too heavy).
       platform: ''
 
+  report-tlx-codegen:
+    needs: lit-tests
+    if: always() && github.event_name == 'schedule' && needs.lit-tests.outputs.codegen_failures != '' && needs.lit-tests.outputs.codegen_failures != '[]'
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        item: ${{ fromJSON(needs.lit-tests.outputs.codegen_failures) }}
+    uses: ./.github/workflows/report-nightly-failure.yml
+    with:
+      issue_title: ${{ matrix.item.issue_title }}
+      normalized_failure_id: ${{ matrix.item.normalized_failure_id }}
+      raw_failure_ids: ${{ matrix.item.raw_failure_ids }}
+      workflow_name: ${{ github.workflow }}
+      job_name: ${{ matrix.item.job_name }}
+      run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      ref: ${{ github.ref }}
+      sha: ${{ github.sha }}
+      event_name: ${{ github.event_name }}
+      run_attempt: ${{ github.run_attempt }}
+      summary: ${{ matrix.item.summary }}
+      repro: ${{ matrix.item.repro }}
+      external_dep: ${{ matrix.item.external_dep }}
+      external_dep_reason: ${{ matrix.item.external_dep_reason }}
+      # platform intentionally empty: same rebuild cost as the LIT lane above.
+      platform: ''
+
   # ----- Nightly issue reconciliation: close recovered issues (schedule only) -----
   reconcile-compiler-lit:
     needs: lit-tests
@@ -144,4 +209,17 @@ jobs:
       workflow_name: ${{ github.workflow }}
       job_name: lit-tests
       failures: ${{ needs.lit-tests.outputs.failures }}
+      run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  reconcile-tlx-codegen:
+    needs: lit-tests
+    if: always() && github.event_name == 'schedule' && (needs.lit-tests.result == 'success' || needs.lit-tests.result == 'failure')
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/reconcile-nightly-issues.yml
+    with:
+      workflow_name: ${{ github.workflow }}
+      job_name: tlx-codegen
+      failures: ${{ needs.lit-tests.outputs.codegen_failures }}
       run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
